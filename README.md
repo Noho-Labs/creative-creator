@@ -19,7 +19,7 @@ That's it — by default `MOCK_IMAGES=true` (see `.env`), so the whole flow runs
 cp .env.local.example .env.local   # then set OPENAI_API_KEY and MOCK_IMAGES=false
 ```
 
-Optional overrides in `.env.local`: `OPENAI_IMAGE_MODEL` (default `gpt-image-2`), `OPENAI_IMAGE_SIZE` (default `1024x1024`), `OPENAI_IMAGE_QUALITY` (default `medium`).
+Optional overrides in `.env.local`: `OPENAI_IMAGE_MODEL` (default `gpt-image-2`), `OPENAI_IMAGE_SIZE` (default `1024x1536` portrait), `OPENAI_IMAGE_QUALITY` (default `medium`).
 
 ## How it works
 

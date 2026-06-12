@@ -19,7 +19,7 @@ export function CreativeCard({
 }) {
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="relative aspect-square w-full bg-zinc-100 dark:bg-zinc-800">
+      <div className="relative aspect-[2/3] w-full bg-zinc-100 dark:bg-zinc-800">
         {creative.status === "complete" ? (
           // eslint-disable-next-line @next/next/no-img-element -- local route-served PNG, no optimizer needed
           <img
