@@ -1,27 +1,56 @@
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 import { env } from '@/lib/env';
 
+export type ImageAsset = {
+  buffer: Buffer;
+  mime: string;
+  label: string; // e.g. 'app icon' — referenced in the prompt, in attachment order
+};
+
 // Single composition point: adding campaign-brief context later is one line here.
-export function buildImagePrompt(input: { concept: string; details: string }): string {
+export function buildImagePrompt(
+  input: { concept: string; details: string },
+  assetLabels: string[] = [],
+): string {
   const details = input.details.trim();
   return [
     `Generate a polished advertising creative image for this concept: ${input.concept}`,
     details ? `Details:\n${details}` : null,
+    assetLabels.length > 0
+      ? `Attached reference images, in order: ${assetLabels
+          .map((label, i) => `(${i + 1}) ${label}`)
+          .join(', ')}. Incorporate them faithfully — reproduce the app icon and logo exactly as provided, without redesigning them. If an app screenshot is attached, feature it prominently and legibly (e.g. on a phone screen).`
+      : null,
   ]
     .filter(Boolean)
     .join('\n\n');
 }
 
-export async function generateImage(prompt: string): Promise<Buffer> {
+export async function generateImage(prompt: string, assets: ImageAsset[] = []): Promise<Buffer> {
   if (env.mockImages) return mockImage(prompt);
 
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const result = await openai.images.generate({
+  const params = {
     model: env.OPENAI_IMAGE_MODEL,
     prompt,
     size: env.OPENAI_IMAGE_SIZE as 'auto', // gpt-image-2 accepts flexible sizes beyond the SDK union
     quality: env.OPENAI_IMAGE_QUALITY,
-  });
+  };
+
+  // With reference images (icon/logo/screenshot) the edits endpoint is the
+  // multi-image input surface; gpt-image-2 processes inputs at high fidelity.
+  const result =
+    assets.length > 0
+      ? await openai.images.edit({
+          ...params,
+          image: await Promise.all(
+            assets.map((a, i) =>
+              toFile(a.buffer, `${i}-${a.label.replaceAll(' ', '-')}`, { type: a.mime }),
+            ),
+          ),
+        })
+      : await openai.images.generate(params);
+
   const b64 = result.data?.[0]?.b64_json;
   if (!b64) throw new Error(`${env.OPENAI_IMAGE_MODEL} returned no image data`);
   return Buffer.from(b64, 'base64');

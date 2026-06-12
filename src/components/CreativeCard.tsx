@@ -1,13 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import { Markdown } from "@/components/Markdown";
 import type { CreativeDTO } from "@/lib/types";
 
 const STATUS_STYLES: Record<CreativeDTO["status"], string> = {
   pending: "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200",
   generating: "bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300 animate-pulse",
+  awaiting_screenshot: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
   complete: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
   failed: "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300",
+};
+
+const STATUS_LABELS: Partial<Record<CreativeDTO["status"], string>> = {
+  awaiting_screenshot: "needs screenshot",
 };
 
 export function CreativeCard({
@@ -39,13 +45,25 @@ export function CreativeCard({
               Retry
             </button>
           </div>
+        ) : creative.status === "awaiting_screenshot" ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center">
+            <p className="line-clamp-5 text-xs text-amber-700 dark:text-amber-300">
+              {creative.screenshotRequest ?? "This creative needs an app screenshot."}
+            </p>
+            <Link
+              href={`/creatives/${creative.id}/screenshot`}
+              className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500"
+            >
+              Add screenshot
+            </Link>
+          </div>
         ) : (
           <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-zinc-200 to-zinc-300 dark:from-zinc-800 dark:to-zinc-700" />
         )}
         <span
           className={`absolute left-3 top-3 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[creative.status]}`}
         >
-          {creative.status}
+          {STATUS_LABELS[creative.status] ?? creative.status}
         </span>
       </div>
       <div className="flex flex-col gap-2 p-4">

@@ -1,8 +1,9 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { creatives } from '@/db/schema';
-import { saveImage } from '@/server/files';
-import { buildImagePrompt, generateImage } from '@/server/images';
+import { classifyCreative } from '@/server/classify';
+import { mimeForPath, readImage, saveImage } from '@/server/files';
+import { buildImagePrompt, generateImage, type ImageAsset } from '@/server/images';
 
 const CONCURRENCY = 2;
 
@@ -31,9 +32,9 @@ export function kickQueue(): void {
 async function workerLoop(): Promise<void> {
   await reclaimOrphans();
   for (;;) {
-    const row = await claimNext();
-    if (!row) return; // queue drained; the next kick respawns workers
-    await processOne(row);
+    const id = await claimNext();
+    if (!id) return; // queue drained; the next kick respawns workers
+    await processOne(id);
   }
 }
 
@@ -53,9 +54,7 @@ async function reclaimOrphans(): Promise<void> {
     WHERE status = 'generating' AND started_at < now() - interval '5 minutes'`);
 }
 
-type ClaimedRow = { id: string; concept: string; details: string };
-
-async function claimNext(): Promise<ClaimedRow | null> {
+async function claimNext(): Promise<string | null> {
   // Atomic claim. SKIP LOCKED keeps this correct if a second process (e.g. a
   // future AI-loop worker) ever shares the table.
   const result = await db.execute(sql`
@@ -65,22 +64,73 @@ async function claimNext(): Promise<ClaimedRow | null> {
       ORDER BY created_at ASC LIMIT 1
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, concept, details`);
-  return (result.rows[0] as ClaimedRow | undefined) ?? null;
+    RETURNING id`);
+  const row = result.rows[0] as { id: string } | undefined;
+  return row?.id ?? null;
 }
 
-async function processOne(row: ClaimedRow): Promise<void> {
+async function processOne(creativeId: string): Promise<void> {
   try {
-    const png = await generateImage(buildImagePrompt(row));
-    const imagePath = await saveImage(row.id, png);
+    const creative = await db.query.creatives.findFirst({
+      where: eq(creatives.id, creativeId),
+      with: { campaign: true },
+    });
+    if (!creative) return;
+    const { campaign } = creative;
+
+    // Step 1: classify which assets this creative needs (once per creative).
+    let needs = {
+      needsScreenshot: creative.needsScreenshot ?? false,
+      needsAppIcon: creative.needsAppIcon ?? false,
+      needsLogo: creative.needsLogo ?? false,
+      screenshotRequest: creative.screenshotRequest,
+    };
+    if (!creative.classifiedAt) {
+      needs = await classifyCreative({
+        brief: campaign.brief,
+        concept: creative.concept,
+        details: creative.details,
+      });
+      await db
+        .update(creatives)
+        .set({ ...needs, classifiedAt: new Date() })
+        .where(eq(creatives.id, creativeId));
+    }
+
+    // Step 2: a needed screenshot can only come from the user — park the
+    // creative until one is uploaded (the upload route re-queues it).
+    if (needs.needsScreenshot && !creative.screenshotPath) {
+      await db
+        .update(creatives)
+        .set({ status: 'awaiting_screenshot', startedAt: null })
+        .where(eq(creatives.id, creativeId));
+      return;
+    }
+
+    // Step 3: if any asset need was flagged, attach the campaign's app icon and
+    // logo (whichever are uploaded) plus the creative's screenshot.
+    const assets: ImageAsset[] = [];
+    if (needs.needsScreenshot || needs.needsAppIcon || needs.needsLogo) {
+      const attach = async (rel: string | null, label: string) => {
+        if (!rel) return;
+        assets.push({ buffer: await readImage(rel), mime: mimeForPath(rel), label });
+      };
+      await attach(campaign.appIconPath, 'app icon');
+      await attach(campaign.logoPath, 'brand logo');
+      await attach(creative.screenshotPath, 'app screenshot');
+    }
+
+    const prompt = buildImagePrompt(creative, assets.map((a) => a.label));
+    const png = await generateImage(prompt, assets);
+    const imagePath = await saveImage(creativeId, png);
     await db
       .update(creatives)
       .set({ status: 'complete', imagePath, completedAt: new Date(), error: null })
-      .where(eq(creatives.id, row.id));
+      .where(eq(creatives.id, creativeId));
   } catch (err) {
     await db
       .update(creatives)
       .set({ status: 'failed', error: err instanceof Error ? err.message : String(err) })
-      .where(eq(creatives.id, row.id));
+      .where(eq(creatives.id, creativeId));
   }
 }

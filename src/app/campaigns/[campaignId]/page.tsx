@@ -1,5 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { CampaignAssets } from "@/components/CampaignAssets";
 import { CreativesBoard } from "@/components/CreativesBoard";
 import { Markdown } from "@/components/Markdown";
 import { db } from "@/db/client";
@@ -43,6 +44,11 @@ export default async function CampaignPage({
             <Markdown>{campaign.brief}</Markdown>
           </div>
         </details>
+        <CampaignAssets
+          campaignId={campaign.id}
+          hasIcon={!!campaign.appIconPath}
+          hasLogo={!!campaign.logoPath}
+        />
       </div>
       <CreativesBoard campaignId={campaign.id} initialCreatives={rows.map(toCreativeDTO)} />
     </div>

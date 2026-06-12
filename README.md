@@ -21,9 +21,13 @@ cp .env.local.example .env.local   # then set OPENAI_API_KEY and MOCK_IMAGES=fal
 
 Optional overrides in `.env.local`: `OPENAI_IMAGE_MODEL` (default `gpt-image-2`), `OPENAI_IMAGE_SIZE` (default `1024x1536` portrait), `OPENAI_IMAGE_QUALITY` (default `medium`).
 
+## Brand assets
+
+Each campaign can store an **app icon** and a **logo** (upload slots on the campaign page). Before generating, a classifier (`OPENAI_TEXT_MODEL`, default `gpt-5.4-mini`) reads the brief + creative and decides whether the ad needs the app's UI, the icon, or the logo. If any are needed, the stored icon/logo are attached to the gpt-image-2 request (`images.edit` with multiple input images). If an **app screenshot** is needed, the creative parks as `awaiting_screenshot` with a one-line request describing which screen to capture — an upload page collects it, then generation resumes automatically. In mock mode the classifier is a keyword heuristic (mention "logo", "icon", or "screenshot" in a concept to exercise each path).
+
 ## How it works
 
-- **DB**: Drizzle + Postgres (`src/db/schema.ts`). `creatives.status` (`pending → generating → complete | failed`) is the queue's source of truth.
+- **DB**: Drizzle + Postgres (`src/db/schema.ts`). `creatives.status` (`pending → generating → awaiting_screenshot | complete | failed`) is the queue's source of truth.
 - **Queue** (`src/server/queue.ts`): in-process, concurrency 2. Rows are claimed with `FOR UPDATE SKIP LOCKED`; a process restart reclaims orphaned `generating` rows on the next kick. Any open campaign page polls every 2s, which also re-kicks the queue — so a restarted server self-heals.
 - **Images**: written to `data/images/<creativeId>.png` (gitignored), served by `/api/images/[creativeId]` with immutable caching (`?v=<completedAt>` busts it on regenerate).
 - **API**: `POST /api/campaigns`, `GET|POST /api/campaigns/[id]/creatives`, `POST /api/creatives/[id]/retry`.
