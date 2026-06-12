@@ -1,36 +1,37 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Creative Creator
 
-## Getting Started
+Personal tool for generating ad creatives. A **campaign** has a name and a markdown brief; it contains **creatives** (a one-line concept + optional markdown details). Saving a creative queues an OpenAI **gpt-image-2** generation — images land in `data/images/` and show up on the campaign board as they finish. Queue 5–10 at a time; the form clears and refocuses after each save.
 
-First, run the development server:
+## Run it
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```sh
+createdb creative_creator   # once — local Homebrew Postgres, trust auth
+npm install
+npm run db:migrate
+npm run dev                 # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+That's it — by default `MOCK_IMAGES=true` (see `.env`), so the whole flow runs with placeholder images and zero API spend.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Real image generation
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```sh
+cp .env.local.example .env.local   # then set OPENAI_API_KEY and MOCK_IMAGES=false
+```
 
-## Learn More
+Optional overrides in `.env.local`: `OPENAI_IMAGE_MODEL` (default `gpt-image-2`), `OPENAI_IMAGE_SIZE` (default `1024x1024`), `OPENAI_IMAGE_QUALITY` (default `medium`).
 
-To learn more about Next.js, take a look at the following resources:
+## How it works
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **DB**: Drizzle + Postgres (`src/db/schema.ts`). `creatives.status` (`pending → generating → complete | failed`) is the queue's source of truth.
+- **Queue** (`src/server/queue.ts`): in-process, concurrency 2. Rows are claimed with `FOR UPDATE SKIP LOCKED`; a process restart reclaims orphaned `generating` rows on the next kick. Any open campaign page polls every 2s, which also re-kicks the queue — so a restarted server self-heals.
+- **Images**: written to `data/images/<creativeId>.png` (gitignored), served by `/api/images/[creativeId]` with immutable caching (`?v=<completedAt>` busts it on regenerate).
+- **API**: `POST /api/campaigns`, `GET|POST /api/campaigns/[id]/creatives`, `POST /api/creatives/[id]/retry`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Future
 
-## Deploy on Vercel
+The planned AI loop (AI writes briefs/creatives on a schedule) slots in as a worker/cron that POSTs to the same endpoints — the `SKIP LOCKED` claim already tolerates a second process.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Scripts
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`dev` · `build` · `start` · `lint` · `typecheck` · `db:generate` · `db:migrate` · `db:push` · `db:studio`

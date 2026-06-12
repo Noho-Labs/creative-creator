@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env: .env holds local non-secret defaults and IS committed; secrets go in .env.local
+.env*.local
+
+# generated images + app data
+/data/
 
 # vercel
 .vercel
