@@ -13,12 +13,20 @@ export function CreativesBoard({
   campaignId: string;
   initialCreatives: CreativeDTO[];
 }) {
-  const [creativesList, setCreativesList] = useState<CreativeDTO[]>(initialCreatives);
+  const [creativesList, setCreativesList] =
+    useState<CreativeDTO[]>(initialCreatives);
   const [concept, setConcept] = useState("");
   const [details, setDetails] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const conceptRef = useRef<HTMLInputElement>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const drafts = creativesList.filter(
+    (creative) =>
+      creative.status === "complete" && creative.reviewStatus === "draft",
+  );
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/campaigns/${campaignId}/creatives`);
@@ -31,7 +39,10 @@ export function CreativesBoard({
   // restarts automatically when a new row appears (state change re-runs the effect).
   useEffect(() => {
     const active = creativesList.some(
-      (c) => c.status === "pending" || c.status === "generating",
+      (c) =>
+        c.status === "pending" ||
+        c.status === "generating" ||
+        c.reviewStatus === "in_review",
     );
     if (!active) return;
     const t = setInterval(refresh, POLL_MS);
@@ -66,6 +77,32 @@ export function CreativesBoard({
     await refresh();
   }
 
+  async function reviewAction(url: string, body: unknown) {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error ?? "Review action failed");
+      await refresh();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendForReview(ids: string[]) {
+    if (await reviewAction("/api/creatives/send-for-review", { ids }))
+      setSelected([]);
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <form
@@ -73,7 +110,9 @@ export function CreativesBoard({
         className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
       >
         <h2 className="text-base font-semibold">
-          {creativesList.length === 0 ? "Add your first creative" : "Add a creative"}
+          {creativesList.length === 0
+            ? "Add your first creative"
+            : "Add a creative"}
         </h2>
         <input
           ref={conceptRef}
@@ -91,7 +130,9 @@ export function CreativesBoard({
           placeholder="Details (optional, markdown) — setting, style, copy, mood…"
           className="rounded-lg border border-zinc-300 bg-white px-3 py-2 font-mono text-sm outline-none focus:border-indigo-500 dark:border-zinc-700 dark:bg-zinc-950"
         />
-        {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
+        {error && (
+          <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
+        )}
         <button
           type="submit"
           disabled={submitting || concept.trim().length === 0}
@@ -101,10 +142,69 @@ export function CreativesBoard({
         </button>
       </form>
 
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <button
+          disabled={
+            busy ||
+            !selected.some((id) => drafts.some((draft) => draft.id === id))
+          }
+          onClick={() =>
+            void sendForReview(
+              selected.filter((id) => drafts.some((draft) => draft.id === id)),
+            )
+          }
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-white disabled:opacity-50"
+        >
+          Send for review (
+          {
+            selected.filter((id) => drafts.some((draft) => draft.id === id))
+              .length
+          }
+          )
+        </button>
+        <button
+          disabled={busy || !drafts.length}
+          onClick={() => void sendForReview(drafts.map((draft) => draft.id))}
+          className="rounded-lg border border-zinc-300 px-4 py-2 disabled:opacity-50 dark:border-zinc-700"
+        >
+          Send all finished drafts
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(
+                `${window.location.origin}/review`,
+              );
+              setCopied(true);
+            } catch {
+              setError("Could not copy the review link");
+            }
+          }}
+          className="text-indigo-600 hover:underline"
+        >
+          {copied ? "Copied!" : "Copy review link"}
+        </button>
+      </div>
       {creativesList.length > 0 && (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {creativesList.map((c) => (
-            <CreativeCard key={c.id} creative={c} onRetry={handleRetry} />
+            <CreativeCard
+              key={c.id}
+              creative={c}
+              onRetry={handleRetry}
+              selected={selected.includes(c.id)}
+              onSelect={(id) =>
+                setSelected((previous) =>
+                  previous.includes(id)
+                    ? previous.filter((value) => value !== id)
+                    : [...previous, id],
+                )
+              }
+              busy={busy}
+              onDecision={(id, action, notes) =>
+                reviewAction(`/api/creatives/${id}/decision`, { action, notes, version: c.version })
+              }
+            />
           ))}
         </div>
       )}

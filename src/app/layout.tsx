@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { getViewer } from "@/server/auth";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,11 +19,12 @@ export const metadata: Metadata = {
   description: "Campaigns, creatives, and gpt-image-2 generations",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const viewer = await getViewer();
   return (
     <html
       lang="en"
@@ -34,15 +36,25 @@ export default function RootLayout({
             <Link href="/" className="text-lg font-semibold tracking-tight">
               Creative Creator
             </Link>
-            <Link
-              href="/campaigns/new"
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
-            >
-              New campaign
-            </Link>
+            <nav className="flex flex-wrap items-center justify-end gap-3 text-sm">
+              <span className="text-xs text-zinc-500">{viewer?.email}</span>
+              <Link href="/review" className="text-indigo-600 hover:underline">
+                Review queue
+              </Link>
+              {viewer?.isCreator && (
+                <Link
+                  href="/campaigns/new"
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+                >
+                  New campaign
+                </Link>
+              )}
+            </nav>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</main>
+        <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">
+          {children}
+        </main>
       </body>
     </html>
   );

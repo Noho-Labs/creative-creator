@@ -28,6 +28,7 @@ export async function classifyCreative(input: {
   brief: string;
   concept: string;
   details: string;
+  revisionNotes?: string | null;
 }): Promise<AssetNeeds> {
   if (env.mockImages) return mockClassify(input);
 
@@ -38,7 +39,7 @@ export async function classifyCreative(input: {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `Campaign brief:\n${input.brief}\n\nCreative concept: ${input.concept}\n\nCreative details:\n${input.details.trim() || '(none)'}`,
+        content: `Campaign brief:\n${input.brief}\n\nCreative concept: ${input.concept}\n\nCreative details:\n${input.details.trim() || '(none)'}${input.revisionNotes?.trim() ? `\n\nRevisions requested by reviewers:\n${input.revisionNotes.trim()}` : ''}`,
       },
     ],
     response_format: {
@@ -76,8 +77,8 @@ export async function classifyCreative(input: {
 
 // Deterministic keyword heuristic so the full flow (including the
 // awaiting-screenshot gate) is testable in mock mode with zero API spend.
-function mockClassify(input: { concept: string; details: string }): AssetNeeds {
-  const text = `${input.concept}\n${input.details}`.toLowerCase();
+function mockClassify(input: { concept: string; details: string; revisionNotes?: string | null }): AssetNeeds {
+  const text = `${input.concept}\n${input.details}\n${input.revisionNotes ?? ''}`.toLowerCase();
   const needsScreenshot = /screenshot|app screen|in-app|app ui/.test(text);
   return {
     needsScreenshot,

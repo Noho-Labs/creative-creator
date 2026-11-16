@@ -15,6 +15,13 @@
       "when": 1781283796990,
       "tag": "0001_charming_mystique",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794856520215,
+      "tag": "0002_ancient_omega_flight",
+      "breakpoints": true
     }
   ]
 }

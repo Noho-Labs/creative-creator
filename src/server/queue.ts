@@ -78,7 +78,7 @@ async function processOne(creativeId: string): Promise<void> {
     if (!creative) return;
     const { campaign } = creative;
 
-    // Step 1: classify which assets this creative needs (once per creative).
+    // Step 1: classify which assets this creative version needs.
     let needs = {
       needsScreenshot: creative.needsScreenshot ?? false,
       needsAppIcon: creative.needsAppIcon ?? false,
@@ -90,6 +90,7 @@ async function processOne(creativeId: string): Promise<void> {
         brief: campaign.brief,
         concept: creative.concept,
         details: creative.details,
+        revisionNotes: creative.revisionNotes,
       });
       await db
         .update(creatives)

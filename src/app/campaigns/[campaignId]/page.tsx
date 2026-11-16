@@ -5,7 +5,7 @@ import { CreativesBoard } from "@/components/CreativesBoard";
 import { Markdown } from "@/components/Markdown";
 import { db } from "@/db/client";
 import { creatives } from "@/db/schema";
-import { toCreativeDTO } from "@/lib/types";
+import { creativeDTOs } from "@/server/reviews";
 import { isUuid } from "@/lib/uuid";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +50,7 @@ export default async function CampaignPage({
           hasLogo={!!campaign.logoPath}
         />
       </div>
-      <CreativesBoard campaignId={campaign.id} initialCreatives={rows.map(toCreativeDTO)} />
+      <CreativesBoard campaignId={campaign.id} initialCreatives={await creativeDTOs(rows)} />
     </div>
   );
 }
