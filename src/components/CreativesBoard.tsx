@@ -202,7 +202,7 @@ export function CreativesBoard({
               }
               busy={busy}
               onDecision={(id, action, notes) =>
-                reviewAction(`/api/creatives/${id}/decision`, { action, notes })
+                reviewAction(`/api/creatives/${id}/decision`, { action, notes, version: c.version })
               }
             />
           ))}

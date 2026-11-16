@@ -7,7 +7,7 @@ import { getViewer } from '@/server/auth';
 import { kickQueue } from '@/server/queue';
 import { creativeDTOs } from '@/server/reviews';
 
-const input = z.object({ action: z.enum(['approve', 'reject', 'revise']), notes: z.string().trim().default('') })
+const input = z.object({ action: z.enum(['approve', 'reject', 'revise']), version: z.number().int().positive(), notes: z.string().trim().default('') })
   .refine((value) => value.action !== 'revise' || value.notes.length > 0, { message: 'Revision notes are required' });
 
 export async function POST(request: Request, { params }: { params: Promise<{ creativeId: string }> }) {
@@ -20,6 +20,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cre
   const result = await db.transaction(async (tx) => {
     const [creative] = await tx.select().from(creatives).where(eq(creatives.id, creativeId)).for('update');
     if (!creative) return { error: 'not found', status: 404 };
+    if (creative.version !== parsed.data.version) return { error: 'Stale version', status: 409 };
     if (creative.reviewStatus !== 'in_review' || creative.status !== 'complete') return { error: 'Creative must be complete and in review', status: 409 };
     const { action, notes } = parsed.data;
     const [row] = await tx.update(creatives).set(action === 'revise' ? {
