@@ -1,4 +1,10 @@
-import type { CreativeRow } from '@/db/schema';
+import type { CreativeRow, ReviewRow } from '@/db/schema';
+
+export type ReviewDecision = 'approve' | 'deny' | 'changes';
+export type ReviewSummary = {
+  counts: Record<ReviewDecision, number>;
+  reviews: { email: string; decision: ReviewDecision; note: string; createdAt: string }[];
+};
 
 export type CreativeStatus =
   | 'pending'
@@ -14,6 +20,13 @@ export type CreativeDTO = {
   concept: string;
   details: string;
   status: CreativeStatus;
+  reviewStatus: 'draft' | 'in_review' | 'approved' | 'rejected';
+  version: number;
+  sentForReviewAt: string | null;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  revisionNotes: string | null;
+  reviewSummary: ReviewSummary;
   imagePath: string | null;
   error: string | null;
   needsAppIcon: boolean | null;
@@ -27,9 +40,15 @@ export type CreativeDTO = {
   completedAt: string | null;
 };
 
-export function toCreativeDTO(row: CreativeRow): CreativeDTO {
+export function toCreativeDTO(row: CreativeRow, reviewRows: ReviewRow[] = []): CreativeDTO {
+  const current = reviewRows.filter((review) => review.creativeId === row.id && review.version === row.version);
+  const counts = { approve: 0, deny: 0, changes: 0 };
+  for (const review of current) counts[review.decision]++;
   return {
     ...row,
+    sentForReviewAt: row.sentForReviewAt?.toISOString() ?? null,
+    decidedAt: row.decidedAt?.toISOString() ?? null,
+    reviewSummary: { counts, reviews: current.map((review) => ({ email: review.reviewerEmail, decision: review.decision, note: review.note, createdAt: review.createdAt.toISOString() })) },
     classifiedAt: row.classifiedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null,

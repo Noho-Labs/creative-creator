@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
 const schema = z.object({
+  CF_ACCESS_TEAM_DOMAIN: z.string().optional(),
+  CF_ACCESS_AUD: z.string().optional(),
+  DEV_USER_EMAIL: z.string().default('dev@noholabs.com'),
+  CREATOR_EMAILS: z.string().default(''),
   DATABASE_URL: z.string().min(1),
   MOCK_IMAGES: z.enum(['true', 'false']).default('true'),
   OPENAI_API_KEY: z.string().optional(),

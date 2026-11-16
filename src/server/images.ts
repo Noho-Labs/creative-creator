@@ -9,13 +9,14 @@ export type ImageAsset = {
 
 // Single composition point: adding campaign-brief context later is one line here.
 export function buildImagePrompt(
-  input: { concept: string; details: string },
+  input: { concept: string; details: string; revisionNotes?: string | null },
   assetLabels: string[] = [],
 ): string {
   const details = input.details.trim();
   return [
     `Generate a polished advertising creative image for this concept: ${input.concept}`,
     details ? `Details:\n${details}` : null,
+    input.revisionNotes?.trim() ? `Revisions requested by reviewers:\n${input.revisionNotes.trim()}` : null,
     assetLabels.length > 0
       ? `Attached reference images, in order: ${assetLabels
           .map((label, i) => `(${i + 1}) ${label}`)

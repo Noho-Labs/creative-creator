@@ -5,6 +5,7 @@ import { campaigns, creatives } from '@/db/schema';
 import { toCreativeDTO } from '@/lib/types';
 import { isUuid } from '@/lib/uuid';
 import { kickQueue } from '@/server/queue';
+import { creativeDTOs } from '@/server/reviews';
 
 type Params = { params: Promise<{ campaignId: string }> };
 
@@ -20,7 +21,7 @@ export async function GET(_request: Request, { params }: Params) {
     .orderBy(desc(creatives.createdAt));
   // Self-healing: a page left open polls this, which revives a restarted server's queue.
   kickQueue();
-  return Response.json({ creatives: rows.map(toCreativeDTO) });
+  return Response.json({ creatives: await creativeDTOs(rows) });
 }
 
 const createCreative = z.object({

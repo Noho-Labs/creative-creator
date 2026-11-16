@@ -12,15 +12,14 @@ export async function GET(_request: Request, { params }: Params) {
     return new Response('Not found', { status: 404 });
   }
   const row = await db.query.creatives.findFirst({ where: eq(creatives.id, creativeId) });
-  if (!row || row.status !== 'complete' || !row.imagePath) {
+  if (!row || !row.imagePath) {
     return new Response('Not found', { status: 404 });
   }
   const png = await readImage(row.imagePath);
-  // Immutable is safe: the UI appends ?v=<completedAt>, which changes if regenerated.
   return new Response(new Uint8Array(png), {
     headers: {
       'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Cache-Control': 'private, no-store',
     },
   });
 }
