@@ -25,6 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cre
     const { action, notes } = parsed.data;
     const [row] = await tx.update(creatives).set(action === 'revise' ? {
       version: creative.version + 1, revisionNotes: notes, status: 'pending', error: null, startedAt: null,
+      classifiedAt: null, needsScreenshot: null, needsAppIcon: null, needsLogo: null, screenshotRequest: null,
     } : {
       reviewStatus: action === 'approve' ? 'approved' : 'rejected', decidedAt: new Date(), decidedBy: viewer.email,
     }).where(eq(creatives.id, creativeId)).returning();
