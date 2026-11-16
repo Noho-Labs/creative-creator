@@ -1,3 +1,4 @@
+import { getBindings } from '@/server/bindings';
 import { headers } from 'next/headers';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
@@ -7,13 +8,14 @@ const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
 export async function getViewer(requestHeaders?: Headers): Promise<Viewer | null> {
   const incoming = requestHeaders ?? await headers();
+  const bindings = getBindings();
   let email: string;
-  if (process.env.NODE_ENV !== 'production') {
-    email = incoming.get('x-dev-user-email') ?? process.env.DEV_USER_EMAIL ?? 'dev@noholabs.com';
+  if (bindings.DEV_AUTH === 'true') {
+    email = incoming.get('x-dev-user-email') ?? bindings.DEV_USER_EMAIL ?? 'dev@noholabs.com';
   } else {
     const token = incoming.get('Cf-Access-Jwt-Assertion');
-    const domain = process.env.CF_ACCESS_TEAM_DOMAIN;
-    const audience = process.env.CF_ACCESS_AUD;
+    const domain = bindings.CF_ACCESS_TEAM_DOMAIN;
+    const audience = bindings.CF_ACCESS_AUD;
     if (!token || !domain || !audience) return null;
     try {
       const issuer = `https://${domain.replace(/^https:\/\//, '').replace(/\/$/, '')}`;
@@ -31,6 +33,6 @@ export async function getViewer(requestHeaders?: Headers): Promise<Viewer | null
   }
   email = email.trim().toLowerCase();
   if (!email) return null;
-  const creators = (process.env.CREATOR_EMAILS ?? '').split(',').map((value) => value.trim().toLowerCase());
+  const creators = (bindings.CREATOR_EMAILS ?? '').split(',').map((value) => value.trim().toLowerCase());
   return { email, isCreator: creators.includes(email) };
 }

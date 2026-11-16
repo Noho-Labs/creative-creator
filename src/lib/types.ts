@@ -46,12 +46,6 @@ export function toCreativeDTO(row: CreativeRow, reviewRows: ReviewRow[] = []): C
   for (const review of current) counts[review.decision]++;
   return {
     ...row,
-    sentForReviewAt: row.sentForReviewAt?.toISOString() ?? null,
-    decidedAt: row.decidedAt?.toISOString() ?? null,
-    reviewSummary: { counts, reviews: current.map((review) => ({ email: review.reviewerEmail, decision: review.decision, note: review.note, createdAt: review.createdAt.toISOString() })) },
-    classifiedAt: row.classifiedAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
-    startedAt: row.startedAt?.toISOString() ?? null,
-    completedAt: row.completedAt?.toISOString() ?? null,
+    reviewSummary: { counts, reviews: current.map((review) => ({ email: review.reviewerEmail, decision: review.decision, note: review.note, createdAt: review.createdAt })) },
   };
 }

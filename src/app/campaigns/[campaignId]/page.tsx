@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { CampaignAssets } from "@/components/CampaignAssets";
 import { CreativesBoard } from "@/components/CreativesBoard";
 import { Markdown } from "@/components/Markdown";
-import { db } from "@/db/client";
+import { getDb } from "@/db/client";
 import { creatives } from "@/db/schema";
 import { creativeDTOs } from "@/server/reviews";
 import { isUuid } from "@/lib/uuid";
@@ -15,6 +15,7 @@ export default async function CampaignPage({
 }: {
   params: Promise<{ campaignId: string }>;
 }) {
+  const db = getDb();
   const { campaignId } = await params;
   if (!isUuid(campaignId)) notFound();
 

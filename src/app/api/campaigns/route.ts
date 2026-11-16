@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db } from '@/db/client';
+import { getDb } from '@/db/client';
 import { campaigns } from '@/db/schema';
 
 const createCampaign = z.object({
@@ -8,6 +8,7 @@ const createCampaign = z.object({
 });
 
 export async function POST(request: Request) {
+  const db = getDb();
   const body = await request.json().catch(() => null);
   const parsed = createCampaign.safeParse(body);
   if (!parsed.success) {

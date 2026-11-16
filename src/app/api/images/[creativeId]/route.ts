@@ -1,12 +1,13 @@
 import { eq } from 'drizzle-orm';
-import { db } from '@/db/client';
+import { getDb } from '@/db/client';
 import { creatives } from '@/db/schema';
 import { isUuid } from '@/lib/uuid';
-import { readImage } from '@/server/files';
+import { getImage } from '@/server/files';
 
 type Params = { params: Promise<{ creativeId: string }> };
 
 export async function GET(_request: Request, { params }: Params) {
+  const db = getDb();
   const { creativeId } = await params;
   if (!isUuid(creativeId)) {
     return new Response('Not found', { status: 404 });
@@ -15,8 +16,9 @@ export async function GET(_request: Request, { params }: Params) {
   if (!row || !row.imagePath) {
     return new Response('Not found', { status: 404 });
   }
-  const png = await readImage(row.imagePath);
-  return new Response(new Uint8Array(png), {
+  const png = await getImage(row.imagePath);
+  if (!png) return new Response('Not found', { status: 404 });
+  return new Response(png.body as ReadableStream, {
     headers: {
       'Content-Type': 'image/png',
       'Cache-Control': 'private, no-store',

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { ScreenshotUploader } from "@/components/ScreenshotUploader";
-import { db } from "@/db/client";
+import { getDb } from "@/db/client";
 import { creatives } from "@/db/schema";
 import { isUuid } from "@/lib/uuid";
 
@@ -12,6 +12,7 @@ export default async function ScreenshotPage({
 }: {
   params: Promise<{ creativeId: string }>;
 }) {
+  const db = getDb();
   const { creativeId } = await params;
   if (!isUuid(creativeId)) notFound();
 

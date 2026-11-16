@@ -1,8 +1,5 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import path from 'path';
-import { env } from '@/lib/env';
-
-const DATA_DIR = path.resolve(env.DATA_DIR);
+import type { R2Bucket } from '@cloudflare/workers-types';
+import { getBindings } from '@/server/bindings';
 
 export const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
@@ -16,34 +13,33 @@ const MIME_BY_EXT: Record<string, string> = {
   webp: 'image/webp',
 };
 
-export function mimeForPath(rel: string): string {
-  return MIME_BY_EXT[path.extname(rel).slice(1)] ?? 'application/octet-stream';
+export function mimeForPath(key: string): string {
+  return MIME_BY_EXT[key.split('.').pop() ?? ''] ?? 'application/octet-stream';
 }
 
-async function saveFile(rel: string, data: Buffer): Promise<string> {
-  const abs = path.join(DATA_DIR, rel);
-  await mkdir(path.dirname(abs), { recursive: true });
-  await writeFile(abs, data);
-  return rel; // DB stores the path relative to DATA_DIR
+async function saveFile(key: string, data: Buffer, bucket: R2Bucket = getBindings().IMAGES): Promise<string> {
+  await bucket.put(key, new Uint8Array(data), { httpMetadata: { contentType: mimeForPath(key) } });
+  return key;
 }
 
-export function saveImage(creativeId: string, png: Buffer): Promise<string> {
-  return saveFile(path.join('images', `${creativeId}.png`), png);
+export function saveImage(creativeId: string, version: number, png: Buffer, bucket: R2Bucket): Promise<string> {
+  return saveFile(`images/${creativeId}/v${version}-${crypto.randomUUID()}.png`, png, bucket);
 }
 
-export function saveCampaignAsset(
-  campaignId: string,
-  kind: 'icon' | 'logo',
-  ext: string,
-  data: Buffer,
-): Promise<string> {
-  return saveFile(path.join('assets', campaignId, `${kind}.${ext}`), data);
+export function saveCampaignAsset(campaignId: string, kind: 'icon' | 'logo', ext: string, data: Buffer): Promise<string> {
+  return saveFile(`assets/${campaignId}/${kind}.${ext}`, data);
 }
 
 export function saveScreenshot(creativeId: string, ext: string, data: Buffer): Promise<string> {
-  return saveFile(path.join('screenshots', `${creativeId}.${ext}`), data);
+  return saveFile(`screenshots/${creativeId}.${ext}`, data);
 }
 
-export function readImage(rel: string): Promise<Buffer> {
-  return readFile(path.join(DATA_DIR, rel));
+export async function getImage(key: string, bucket: R2Bucket = getBindings().IMAGES) {
+  return bucket.get(key);
+}
+
+export async function readImage(key: string, bucket: R2Bucket = getBindings().IMAGES): Promise<Buffer> {
+  const object = await getImage(key, bucket);
+  if (!object) throw new Error('Image not found');
+  return Buffer.from(await object.arrayBuffer());
 }
