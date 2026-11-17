@@ -20,9 +20,9 @@ const { outputFiles } = await build({
     },
   }],
 });
-const module = { exports: {} };
-new Function('require', 'module', 'exports', outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
-const { enqueueCreative } = module.exports;
+const loadedModule = { exports: {} };
+new Function('require', 'module', 'exports', outputFiles[0].text)(createRequire(import.meta.url), loadedModule, loadedModule.exports);
+const { enqueueCreative } = loadedModule.exports;
 
 test('enqueueCreative sends the committed creative id', async (t) => {
   const send = t.mock.fn(async () => {});
