@@ -8,7 +8,11 @@ import { mimeForPath, readImage, saveImage } from '@/server/files';
 import { buildImagePrompt, generateImage, type ImageAsset } from '@/server/images';
 
 export async function enqueueCreative(creativeId: string): Promise<void> {
-  await getBindings().GEN_QUEUE.send({ creativeId });
+  try {
+    await getBindings().GEN_QUEUE.send({ creativeId });
+  } catch (error) {
+    console.error('Generation enqueue failed; scheduled recovery will retry', creativeId, error);
+  }
 }
 
 export async function recoverPending(bindings: AppBindings): Promise<void> {
