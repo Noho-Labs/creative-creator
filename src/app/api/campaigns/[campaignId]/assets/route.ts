@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { db } from '@/db/client';
+import { getDb } from '@/db/client';
 import { campaigns } from '@/db/schema';
 import { isUuid } from '@/lib/uuid';
 import { saveCampaignAsset } from '@/server/files';
@@ -11,6 +11,7 @@ const KINDS = ['icon', 'logo'] as const;
 type Kind = (typeof KINDS)[number];
 
 export async function POST(request: Request, { params }: Params) {
+  const db = getDb();
   const { campaignId } = await params;
   if (!isUuid(campaignId)) {
     return Response.json({ error: 'not found' }, { status: 404 });

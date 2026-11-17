@@ -1,5 +1,5 @@
 import OpenAI, { toFile } from 'openai';
-import { env } from '@/lib/env';
+import { getEnv, type Settings } from '@/lib/env';
 
 export type ImageAsset = {
   buffer: Buffer;
@@ -27,7 +27,7 @@ export function buildImagePrompt(
     .join('\n\n');
 }
 
-export async function generateImage(prompt: string, assets: ImageAsset[] = []): Promise<Buffer> {
+export async function generateImage(prompt: string, assets: ImageAsset[] = [], env: Settings = getEnv()): Promise<Buffer> {
   if (env.mockImages) return mockImage(prompt);
 
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });

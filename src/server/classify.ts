@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { env } from '@/lib/env';
+import { getEnv, type Settings } from '@/lib/env';
 
 export type AssetNeeds = {
   needsScreenshot: boolean;
@@ -29,7 +29,7 @@ export async function classifyCreative(input: {
   concept: string;
   details: string;
   revisionNotes?: string | null;
-}): Promise<AssetNeeds> {
+}, env: Settings = getEnv()): Promise<AssetNeeds> {
   if (env.mockImages) return mockClassify(input);
 
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });

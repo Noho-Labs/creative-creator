@@ -1,16 +1,8 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/d1';
+import type { D1Database } from '@cloudflare/workers-types';
+import { getBindings } from '@/server/bindings';
 import * as schema from './schema';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error('DATABASE_URL is not set. See .env for the local default.');
+export function getDb(binding: D1Database = getBindings().DB) {
+  return drizzle(binding, { schema });
 }
-
-// Reuse the pool across hot-reloads in dev to avoid exhausting connections.
-const globalForDb = globalThis as unknown as { __pgPool?: Pool };
-const pool = globalForDb.__pgPool ?? new Pool({ connectionString });
-if (process.env.NODE_ENV !== 'production') globalForDb.__pgPool = pool;
-
-export const db = drizzle(pool, { schema });
-export { schema };

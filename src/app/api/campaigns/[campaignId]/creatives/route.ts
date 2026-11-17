@@ -1,15 +1,16 @@
 import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '@/db/client';
+import { getDb } from '@/db/client';
 import { campaigns, creatives } from '@/db/schema';
 import { toCreativeDTO } from '@/lib/types';
 import { isUuid } from '@/lib/uuid';
-import { kickQueue } from '@/server/queue';
+import { enqueueCreative } from '@/server/queue';
 import { creativeDTOs } from '@/server/reviews';
 
 type Params = { params: Promise<{ campaignId: string }> };
 
 export async function GET(_request: Request, { params }: Params) {
+  const db = getDb();
   const { campaignId } = await params;
   if (!isUuid(campaignId)) {
     return Response.json({ error: 'not found' }, { status: 404 });
@@ -19,8 +20,6 @@ export async function GET(_request: Request, { params }: Params) {
     .from(creatives)
     .where(eq(creatives.campaignId, campaignId))
     .orderBy(desc(creatives.createdAt));
-  // Self-healing: a page left open polls this, which revives a restarted server's queue.
-  kickQueue();
   return Response.json({ creatives: await creativeDTOs(rows) });
 }
 
@@ -30,6 +29,7 @@ const createCreative = z.object({
 });
 
 export async function POST(request: Request, { params }: Params) {
+  const db = getDb();
   const { campaignId } = await params;
   if (!isUuid(campaignId)) {
     return Response.json({ error: 'not found' }, { status: 404 });
@@ -50,6 +50,6 @@ export async function POST(request: Request, { params }: Params) {
     .insert(creatives)
     .values({ campaignId, concept: parsed.data.concept, details: parsed.data.details })
     .returning();
-  kickQueue();
+  await enqueueCreative(row.id);
   return Response.json({ creative: toCreativeDTO(row) }, { status: 201 });
 }

@@ -1,11 +1,12 @@
 import { count, desc, eq } from "drizzle-orm";
 import Link from "next/link";
-import { db } from "@/db/client";
+import { getDb } from "@/db/client";
 import { campaigns, creatives } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
+  const db = getDb();
   const rows = await db
     .select({
       id: campaigns.id,
@@ -48,7 +49,7 @@ export default async function HomePage() {
               <span className="font-medium">{c.name}</span>
               <span className="text-sm text-zinc-500 dark:text-zinc-400">
                 {c.creativeCount} creative{c.creativeCount === 1 ? "" : "s"} ·{" "}
-                {c.createdAt.toLocaleDateString()}
+                {new Date(c.createdAt).toLocaleDateString()}
               </span>
             </Link>
           </li>

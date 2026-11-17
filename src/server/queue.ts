@@ -1,76 +1,40 @@
-import { eq, sql } from 'drizzle-orm';
-import { db } from '@/db/client';
+import { and, asc, eq, lt } from 'drizzle-orm';
+import { getDb } from '@/db/client';
 import { creatives } from '@/db/schema';
+import { getEnv } from '@/lib/env';
+import { getBindings, type AppBindings } from '@/server/bindings';
 import { classifyCreative } from '@/server/classify';
 import { mimeForPath, readImage, saveImage } from '@/server/files';
 import { buildImagePrompt, generateImage, type ImageAsset } from '@/server/images';
 
-const CONCURRENCY = 2;
-
-// Queue state lives on globalThis (same trick as __pgPool in db/client.ts): a dev
-// hot-reload keeps the process — and in-flight generations — alive, while a process
-// restart resets this, which is exactly how reclaimOrphans detects orphaned rows.
-// Fire-and-forget workers assume a long-lived local Node process; a serverless
-// deploy would swap kickQueue for Next's after() or a real queue.
-type QueueState = { active: number; reclaimedOnBoot: boolean };
-const globalForQueue = globalThis as unknown as { __imageQueue?: QueueState };
-const state: QueueState = (globalForQueue.__imageQueue ??= {
-  active: 0,
-  reclaimedOnBoot: false,
-});
-
-export function kickQueue(): void {
-  // Sync increment before any await, so concurrent kicks never exceed CONCURRENCY.
-  while (state.active < CONCURRENCY) {
-    state.active += 1;
-    void workerLoop().finally(() => {
-      state.active -= 1;
-    });
-  }
-}
-
-async function workerLoop(): Promise<void> {
-  await reclaimOrphans();
-  for (;;) {
-    const id = await claimNext();
-    if (!id) return; // queue drained; the next kick respawns workers
-    await processOne(id);
-  }
-}
-
-async function reclaimOrphans(): Promise<void> {
-  if (!state.reclaimedOnBoot) {
-    // Fresh process: no worker has run yet, so every 'generating' row is orphaned.
-    state.reclaimedOnBoot = true;
-    await db
-      .update(creatives)
-      .set({ status: 'pending', startedAt: null })
-      .where(eq(creatives.status, 'generating'));
-    return;
-  }
-  // Backstop for anything else, e.g. an API call hung past any sane duration.
-  await db.execute(sql`
-    UPDATE creatives SET status = 'pending', started_at = NULL
-    WHERE status = 'generating' AND started_at < now() - interval '5 minutes'`);
-}
-
-async function claimNext(): Promise<string | null> {
-  // Atomic claim. SKIP LOCKED keeps this correct if a second process (e.g. a
-  // future AI-loop worker) ever shares the table.
-  const result = await db.execute(sql`
-    UPDATE creatives SET status = 'generating', started_at = now()
-    WHERE id = (
-      SELECT id FROM creatives WHERE status = 'pending'
-      ORDER BY created_at ASC LIMIT 1
-      FOR UPDATE SKIP LOCKED
-    )
-    RETURNING id`);
-  const row = result.rows[0] as { id: string } | undefined;
-  return row?.id ?? null;
-}
-
-async function processOne(creativeId: string): Promise<void> {
+export async function enqueueCreative(creativeId: string): Promise<void> {
   try {
+    await getBindings().GEN_QUEUE.send({ creativeId });
+  } catch (error) {
+    console.error('Generation enqueue failed; scheduled recovery will retry', creativeId, error);
+  }
+}
+
+export async function recoverPending(bindings: AppBindings): Promise<void> {
+  const db = getDb(bindings.DB);
+  await db.update(creatives).set({ status: 'pending', startedAt: null }).where(and(
+    eq(creatives.status, 'generating'),
+    lt(creatives.startedAt, new Date(Date.now() - 15 * 60_000).toISOString()),
+  ));
+  const pending = await db.select({ id: creatives.id }).from(creatives)
+    .where(eq(creatives.status, 'pending')).orderBy(asc(creatives.createdAt)).limit(100);
+  if (pending.length) await bindings.GEN_QUEUE.sendBatch(pending.map(({ id }) => ({ body: { creativeId: id } })));
+}
+
+export async function processOne(creativeId: string, bindings: AppBindings, lastAttempt: boolean): Promise<void> {
+  const db = getDb(bindings.DB);
+  const [claimed] = await db.update(creatives).set({ status: 'generating', startedAt: new Date().toISOString() })
+    .where(and(eq(creatives.id, creativeId), eq(creatives.status, 'pending'))).returning();
+  if (!claimed) return;
+  const claim = and(eq(creatives.id, creativeId), eq(creatives.version, claimed.version),
+    eq(creatives.status, 'generating'), eq(creatives.startedAt, claimed.startedAt!));
+  try {
+    const env = getEnv(bindings);
     const creative = await db.query.creatives.findFirst({
       where: eq(creatives.id, creativeId),
       with: { campaign: true },
@@ -91,11 +55,11 @@ async function processOne(creativeId: string): Promise<void> {
         concept: creative.concept,
         details: creative.details,
         revisionNotes: creative.revisionNotes,
-      });
+      }, env);
       await db
         .update(creatives)
-        .set({ ...needs, classifiedAt: new Date() })
-        .where(eq(creatives.id, creativeId));
+        .set({ ...needs, classifiedAt: new Date().toISOString() })
+        .where(claim);
     }
 
     // Step 2: a needed screenshot can only come from the user — park the
@@ -104,7 +68,7 @@ async function processOne(creativeId: string): Promise<void> {
       await db
         .update(creatives)
         .set({ status: 'awaiting_screenshot', startedAt: null })
-        .where(eq(creatives.id, creativeId));
+        .where(claim);
       return;
     }
 
@@ -114,7 +78,7 @@ async function processOne(creativeId: string): Promise<void> {
     if (needs.needsScreenshot || needs.needsAppIcon || needs.needsLogo) {
       const attach = async (rel: string | null, label: string) => {
         if (!rel) return;
-        assets.push({ buffer: await readImage(rel), mime: mimeForPath(rel), label });
+        assets.push({ buffer: await readImage(rel, bindings.IMAGES), mime: mimeForPath(rel), label });
       };
       await attach(campaign.appIconPath, 'app icon');
       await attach(campaign.logoPath, 'brand logo');
@@ -122,16 +86,17 @@ async function processOne(creativeId: string): Promise<void> {
     }
 
     const prompt = buildImagePrompt(creative, assets.map((a) => a.label));
-    const png = await generateImage(prompt, assets);
-    const imagePath = await saveImage(creativeId, png);
+    const png = await generateImage(prompt, assets, env);
+    const imagePath = await saveImage(creativeId, creative.version, png, bindings.IMAGES);
     await db
       .update(creatives)
-      .set({ status: 'complete', imagePath, completedAt: new Date(), error: null })
-      .where(eq(creatives.id, creativeId));
+      .set({ status: 'complete', imagePath, completedAt: new Date().toISOString(), error: null })
+      .where(claim);
   } catch (err) {
     await db
       .update(creatives)
-      .set({ status: 'failed', error: err instanceof Error ? err.message : String(err) })
-      .where(eq(creatives.id, creativeId));
+      .set({ status: lastAttempt ? 'failed' : 'pending', startedAt: null, error: err instanceof Error ? err.message : String(err) })
+      .where(claim);
+    throw err;
   }
 }
